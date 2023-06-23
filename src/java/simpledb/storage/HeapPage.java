@@ -21,8 +21,15 @@ public class HeapPage implements Page {
 
     final HeapPageId pid;
     final TupleDesc td;
+
+    /**
+     * the lowest bit of the first byte represents whether or not the first slot in the page is in use.
+     * The second lowest bit of the first byte represents whether or not the second slot in the page is in use
+     */
     final byte[] header;
+
     final Tuple[] tuples;
+
     final int numSlots;
 
     byte[] oldData;
@@ -71,9 +78,10 @@ public class HeapPage implements Page {
     /** Retrieve the number of tuples on this page.
         @return the number of tuples on this page
     */
-    private int getNumTuples() {        
-        // some code goes here
-        return 0;
+    private int getNumTuples() {
+        //页的字节数 * 8 / ((tuple的字节数 * 8 ) + 1)
+        //这里的这个1和tuple不是连接在一起的，是算在header里面
+        return (BufferPool.getPageSize() * 8) / (td.getSize() * 8 +1);
 
     }
 
@@ -81,11 +89,9 @@ public class HeapPage implements Page {
      * Computes the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
      * @return the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
      */
-    private int getHeaderSize() {        
-        
-        // some code goes here
-        return 0;
-                 
+    private int getHeaderSize() {
+        //ceil的原因是例如有9个tuple，就需要9bit，而必须要是8的倍数，所以是2B
+        return (int) Math.ceil((double) getNumTuples() / 8);
     }
     
     /** Return a view of this page before it was modified
@@ -117,8 +123,7 @@ public class HeapPage implements Page {
      * @return the PageId associated with this page.
      */
     public HeapPageId getId() {
-    // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        return this.pid;
     }
 
     /**
@@ -219,6 +224,7 @@ public class HeapPage implements Page {
         }
 
         try {
+            //flush将缓冲区中的数据立即输出到目标流中
             dos.flush();
         } catch (IOException e) {
             e.printStackTrace();
@@ -287,16 +293,26 @@ public class HeapPage implements Page {
      * Returns the number of empty slots on this page.
      */
     public int getNumEmptySlots() {
-        // some code goes here
-        return 0;
+        int cnt = 0;
+        for(int i = 0 ; i < numSlots ; i++){
+            if(!isSlotUsed(i)){
+                cnt++;
+            }
+        }
+        return cnt;
     }
 
     /**
      * Returns true if associated slot on this page is filled.
      */
     public boolean isSlotUsed(int i) {
-        // some code goes here
-        return false;
+        //就是第i个slot有没有被使用，则先计算在第几个byte，再算byte中的偏移，然后左移偏移量按位与1得到最低位
+        int iTh = i / 8;
+        // 计算具体在bitmap中的位置
+        int bitTh = i % 8;
+        int onBit = (header[iTh] >> bitTh) & 1;
+        return onBit == 1;
+
     }
 
     /**
@@ -312,8 +328,11 @@ public class HeapPage implements Page {
      * (note that this iterator shouldn't return tuples in empty slots!)
      */
     public Iterator<Tuple> iterator() {
-        // some code goes here
-        return null;
+        List<Tuple> tupleList = new ArrayList<>();
+        for(int i = 0 ; i < numSlots ; i++){
+            if(isSlotUsed(i)) tupleList.add(tuples[i]);
+        }
+        return tupleList.iterator();
     }
 
 }
